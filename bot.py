@@ -1,10 +1,12 @@
 from abc import ABC
 
 import discord
+from discord import ApplicationContext, DiscordException
 import json
 import sqlite3
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import datetime
+import traceback
 
 
 class NickTooLong(Exception):
@@ -72,3 +74,23 @@ class ClanHelper(discord.Bot, ABC):
         self.task_cursor.execute('''DELETE FROM tasks WHERE member_id=?''', (member_id,))
         self.task_db.commit()
         await member.edit(nick=old_nick, reason='Протокол КИРКОРОВ истек')
+
+    async def on_application_command_error(
+        self, context: ApplicationContext, exception: DiscordException
+    ) -> None:
+        bot_info = await self.application_info()
+        owner = bot_info.owner
+        if owner.dm_channel is None:
+            await owner.create_dm()
+        traceback_str = ''
+        for line in traceback.format_exception(type(exception), exception, exception.__traceback__):
+            traceback_str = '{}{}'.format(traceback_str, line)
+        await owner.dm_channel.send('`{}`'.format(traceback_str))
+        command_line = '/{}'.format(context.interaction.data['name'])
+        for option in context.interaction.data['options']:
+            command_line = '{} {}:{}'.format(command_line, option['name'], option['value'])
+        await owner.dm_channel.send('{}:\n{}'.format(context.author, command_line))
+        if context.author.dm_channel is None:
+            await context.author.create_dm()
+        if context.author != owner:
+            await context.author.dm_channel.send(self.translations['en']['error'])
